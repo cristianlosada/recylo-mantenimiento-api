@@ -83,7 +83,7 @@ jobs:
             docker compose exec -T \$CONTAINER php artisan down --retry=5 || true
 
             echo '>>> Instalando dependencias composer...'
-            docker compose exec -T \$CONTAINER composer install --no-dev --optimize-autoloader --no-interaction
+            docker compose exec -T --user root \$CONTAINER composer install --no-dev --optimize-autoloader --no-interaction
 
             echo '>>> Restarting app container...'
             docker compose restart \$CONTAINER
