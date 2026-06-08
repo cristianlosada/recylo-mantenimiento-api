@@ -1,0 +1,154 @@
+version: '3.8'
+
+services:
+  # Servicio de aplicación Laravel
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        user: laravel
+        uid: 1000
+    image: recylo-laravel-app
+    container_name: recylo-app
+    restart: unless-stopped
+    working_dir: /var/www
+    environment:
+      TZ: America/Bogota
+    volumes:
+      - ./:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - recylo-network
+    depends_on:
+      - db
+      - redis
+
+  # Servicio de Nginx
+  nginx:
+    image: nginx:alpine
+    container_name: recylo-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - recylo-network
+    depends_on:
+      - app
+
+  # Servicio de MySQL
+  db:
+    image: mysql:8.0
+    container_name: recylo-db
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_DATABASE: recylo_cmms
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_USER: recylo_user
+      MYSQL_PASSWORD: recylo_password
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'no'
+      TZ: America/Bogota
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+    networks:
+      - recylo-network
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Servicio de Redis (para cache y sesiones)
+  redis:
+    image: redis:alpine
+    container_name: recylo-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - recylo-network
+    command: redis-server --appendonly yes
+
+  # Servicio de Reverb (WebSocket)
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        user: laravel
+        uid: 1000
+    image: recylo-laravel-app
+    container_name: recylo-reverb
+    restart: unless-stopped
+    working_dir: /var/www
+    environment:
+      TZ: America/Bogota
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - recylo-network
+    depends_on:
+      - db
+      - redis
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+
+  # Servicio de Queue Worker (procesa jobs en segundo plano)
+  queue-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        user: laravel
+        uid: 1000
+    image: recylo-laravel-app
+    container_name: recylo-queue-worker
+    restart: unless-stopped
+    working_dir: /var/www
+    environment:
+      TZ: America/Bogota
+    volumes:
+      - ./:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - recylo-network
+    depends_on:
+      - db
+      - redis
+      - app
+    command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --timeout=60
+
+  # Servicio de phpMyAdmin (opcional, para desarrollo)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: recylo-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USERNAME:-recylo_user}
+      PMA_PASSWORD: ${DB_PASSWORD:-recylo_password}
+    networks:
+      - recylo-network
+    depends_on:
+      - db
+
+# Volúmenes persistentes
+volumes:
+  db-data:
+    driver: local
+  redis-data:
+    driver: local
+
+# Red personalizada
+networks:
+  recylo-network:
+    driver: bridge

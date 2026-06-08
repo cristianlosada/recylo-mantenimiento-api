@@ -1,0 +1,123 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, pdo_mysql, redis, bcmath, gd
+          coverage: none
+
+      - name: Instalar dependencias
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Copiar .env de testing
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Ejecutar tests
+        run: php artisan test --testsuite=Unit --stop-on-failure
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Configurar clave SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.REMOTE_PORT || 22 }}" -H "${{ secrets.REMOTE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Probar conexión SSH
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p "${{ secrets.REMOTE_PORT || 22 }}" \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=10 \
+            ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} "echo OK"
+
+      - name: Deploy
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REMOTE_USER: ${{ secrets.REMOTE_USER }}
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_PORT: ${{ secrets.REMOTE_PORT || 22 }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p "$REMOTE_PORT" \
+            -o StrictHostKeyChecking=no \
+            "$REMOTE_USER@$REMOTE_HOST" \
+            "APP_DIR=/home/crissoft/infra/apps/recylo-mantenimiento-api/app
+            INFRA_DIR=/home/crissoft/infra
+            CONTAINER=mantenimientorecylo_api_app
+            set -e
+
+            echo '>>> Pulling latest code...'
+            cd \$APP_DIR
+            git pull https://$GH_PAT@github.com/cristianlosada/recylo-mantenimiento-api.git main
+
+            echo '>>> Activando modo mantenimiento...'
+            cd \$INFRA_DIR
+            docker compose exec -T \$CONTAINER php artisan down --retry=5 || true
+
+            echo '>>> Instalando dependencias composer...'
+            docker compose exec -T \$CONTAINER composer install --no-dev --optimize-autoloader --no-interaction
+
+            echo '>>> Restarting app container...'
+            docker compose restart \$CONTAINER
+            sleep 5
+
+            echo '>>> Running migrations...'
+            docker compose exec -T \$CONTAINER php artisan migrate --force
+
+            echo '>>> Clearing cache...'
+            docker compose exec -T \$CONTAINER php artisan cache:clear
+
+            echo '>>> Optimizing...'
+            docker compose exec -T \$CONTAINER php artisan optimize
+
+            echo '>>> Restarting queue worker...'
+            docker compose restart recylo_api_queue || true
+
+            echo '>>> Desactivando modo mantenimiento...'
+            docker compose exec -T \$CONTAINER php artisan up
+
+            echo '>>> Deploy completed!'"
+
+      - name: Health check
+        run: |
+          sleep 5
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.APP_URL }}/api/health")
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Health check falló — status $STATUS"
+            exit 1
+          fi
+          echo "✅ Health check OK — status $STATUS"
+
+      - name: Notificación de deploy
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deploy exitoso a producción"
+          else
+            echo "❌ El deploy falló — revisa los logs"
+          fi

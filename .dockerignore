@@ -1,0 +1,60 @@
+# Archivos de Git
+.git
+.gitignore
+.gitattributes
+
+# Dependencias (se instalarán en el contenedor)
+/vendor
+/node_modules
+
+# Archivos de entorno
+.env
+.env.backup
+.env.production
+
+# Archivos de IDE
+/.idea
+/.vscode
+*.swp
+*.swo
+*~
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de testing
+/.phpunit.cache
+/coverage
+
+# Archivos de build
+/public/hot
+/public/storage
+/storage/*.key
+
+# Logs
+/storage/logs/*
+!/storage/logs/.gitignore
+
+# Cache de Laravel
+/bootstrap/cache/*
+!/bootstrap/cache/.gitignore
+/storage/framework/cache/*
+!/storage/framework/cache/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+
+# Archivos temporales
+*.log
+npm-debug.log
+yarn-error.log
+
+# Documentación y notas
+/docs
+README.md
+CHANGELOG.md
+
+# Docker
+docker-compose.override.yml
