@@ -3,7 +3,7 @@ name: Deploy to Production
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -40,27 +40,30 @@ jobs:
 
     steps:
       - name: Configurar clave SSH
+        env:
+          REMOTE_PORT: ${{ secrets.REMOTE_PORT || '22' }}
         run: |
           mkdir -p ~/.ssh
           printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "${{ secrets.REMOTE_PORT || 22 }}" -H "${{ secrets.REMOTE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -p "$REMOTE_PORT" -H "${{ secrets.REMOTE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
           chmod 600 ~/.ssh/known_hosts
 
       - name: Probar conexión SSH
+        env:
+          REMOTE_PORT: ${{ secrets.REMOTE_PORT || '22' }}
         run: |
           ssh -i ~/.ssh/deploy_key \
-            -p "${{ secrets.REMOTE_PORT || 22 }}" \
+            -p "$REMOTE_PORT" \
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=10 \
             ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} "echo OK"
 
       - name: Deploy
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
           REMOTE_USER: ${{ secrets.REMOTE_USER }}
           REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
-          REMOTE_PORT: ${{ secrets.REMOTE_PORT || 22 }}
+          REMOTE_PORT: ${{ secrets.REMOTE_PORT || '22' }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p "$REMOTE_PORT" \
@@ -73,7 +76,7 @@ jobs:
 
             echo '>>> Pulling latest code...'
             cd \$APP_DIR
-            git pull https://$GH_PAT@github.com/cristianlosada/recylo-mantenimiento-api.git main
+            git pull origin main
 
             echo '>>> Activando modo mantenimiento...'
             cd \$INFRA_DIR
