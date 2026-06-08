@@ -85,6 +85,9 @@ jobs:
             echo '>>> Instalando dependencias composer...'
             docker compose exec -T --user root \$CONTAINER composer install --no-dev --optimize-autoloader --no-interaction
 
+            echo '>>> Fixing permissions...'
+            docker compose exec -T --user root \$CONTAINER chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+
             echo '>>> Restarting app container...'
             docker compose restart \$CONTAINER
             sleep 5
