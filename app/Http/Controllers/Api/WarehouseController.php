@@ -51,11 +51,13 @@ class WarehouseController extends Controller
         }
 
         // Ordenamiento
-        $sortBy = $request->get('sort_by', 'created_at');
+        $sortBy = $request->get('sort_by', 'name');
         $sortOrder = $request->get('sort_order', 'asc');
         $query->orderBy($sortBy, $sortOrder);
 
-        $warehouses = $query->paginate($request->get('per_page', 15));
+        $warehouses = $request->boolean('all')
+            ? $query->get()
+            : $query->paginate($request->get('per_page', 15));
 
         return ApiResponse::success($warehouses, 'Almacenes obtenidos exitosamente');
     }

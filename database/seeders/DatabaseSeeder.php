@@ -55,6 +55,7 @@ class DatabaseSeeder extends Seeder
             // 12. Módulo de Inventario y Almacenes
             InventoryModuleSeeder::class,
             MaterialCategorySeeder::class,
+            ComponentsModuleSeeder::class,
 
             // 13. Módulo de Órdenes de Trabajo
             WorkOrdersModuleSeeder::class,
