@@ -2,9 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Models\NotificationLog;
 use App\Models\WorkRequest;
 use App\Models\Asset;
 use App\Notifications\Channels\FcmChannel;
+use App\Notifications\Channels\NotificationLogChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -41,7 +43,7 @@ class AssetWorkRequestNotification extends Notification implements ShouldQueue
      */
     public function via($notifiable): array
     {
-        return ['mail', 'broadcast', FcmChannel::class];
+        return ['mail', 'broadcast', FcmChannel::class, NotificationLogChannel::class];
     }
 
     /**
@@ -80,18 +82,15 @@ class AssetWorkRequestNotification extends Notification implements ShouldQueue
      */
     protected function getSubject(): string
     {
-        switch ($this->eventType) {
-            case 'create':
-                return "Nueva Solicitud de Trabajo: {$this->workRequest->code}";
-            case 'approve':
-                return "Solicitud Aprobada: {$this->workRequest->code}";
-            case 'reject':
-                return "Solicitud Rechazada: {$this->workRequest->code}";
-            case 'close':
-                return "Solicitud Cerrada: {$this->workRequest->code}";
-            default:
-                return "Actualización de Solicitud: {$this->workRequest->code}";
-        }
+        return match($this->eventType) {
+            'create'                   => "Nueva Solicitud de Trabajo: {$this->workRequest->code}",
+            'approve', 'approved'      => "Solicitud Aprobada: {$this->workRequest->code}",
+            'reject',  'rejected'      => "Solicitud Rechazada: {$this->workRequest->code}",
+            'close'                    => "Solicitud Cerrada: {$this->workRequest->code}",
+            'sla_warning'              => "SLA por vencer: {$this->workRequest->code}",
+            'sla_breached'             => "SLA incumplido: {$this->workRequest->code}",
+            default                    => "Actualización de Solicitud: {$this->workRequest->code}",
+        };
     }
 
     /**
@@ -99,18 +98,15 @@ class AssetWorkRequestNotification extends Notification implements ShouldQueue
      */
     protected function getGreeting(): string
     {
-        switch ($this->eventType) {
-            case 'create':
-                return '¡Nueva Solicitud de Trabajo Reportada!';
-            case 'approve':
-                return 'Solicitud Aprobada';
-            case 'reject':
-                return 'Solicitud Rechazada';
-            case 'close':
-                return 'Solicitud Cerrada';
-            default:
-                return 'Actualización de Solicitud';
-        }
+        return match($this->eventType) {
+            'create'              => '¡Nueva Solicitud de Trabajo Reportada!',
+            'approve', 'approved' => 'Solicitud Aprobada',
+            'reject',  'rejected' => 'Solicitud Rechazada',
+            'close'               => 'Solicitud Cerrada',
+            'sla_warning'         => 'SLA próximo a vencer',
+            'sla_breached'        => 'SLA incumplido',
+            default               => 'Actualización de Solicitud',
+        };
     }
 
     /**
@@ -205,6 +201,30 @@ class AssetWorkRequestNotification extends Notification implements ShouldQueue
             'asset_id'          => $this->asset->id,
             'asset_name'        => $this->asset->name,
             'event_type'        => $this->eventType,
+        ];
+    }
+
+    public function toNotificationLog($notifiable): array
+    {
+        return [
+            'notification_type' => NotificationLog::TYPE_WORK_REQUEST,
+            'event_type'        => $this->eventType,
+            'work_request_id'   => $this->workRequest->id,
+            'asset_id'          => $this->asset->id,
+            'subject'           => $this->getSubject(),
+            'message'           => $this->getContent(),
+            'metadata'          => [
+                'module'    => 'work_requests',
+                'entity_id' => $this->workRequest->id,
+                'route'     => "/work-requests/{$this->workRequest->id}",
+                'code'      => $this->workRequest->code,
+                'status'    => $this->workRequest->status,
+                'asset'     => [
+                    'id'   => $this->asset->id,
+                    'name' => $this->asset->name,
+                    'code' => $this->asset->code,
+                ],
+            ],
         ];
     }
 }

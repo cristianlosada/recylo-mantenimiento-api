@@ -18,6 +18,7 @@ use App\Models\WorkRequestNotification;
 use App\Models\Company;
 use App\Models\Asset;
 use App\Models\User;
+use App\Notifications\AssetWorkRequestNotification;
 use App\Services\NotificationDispatcher;
 use App\Services\QRCodeService;
 use App\Services\AssetActivityService;
@@ -635,6 +636,12 @@ class WorkRequestController extends Controller
 
             NotificationDispatcher::workRequest($workRequest, 'approved');
 
+            if ($workRequest->requester && $workRequest->asset) {
+                $workRequest->requester->notify(
+                    new AssetWorkRequestNotification($workRequest, $workRequest->asset, 'approved')
+                );
+            }
+
             // Registrar actividad de aprobación
             $this->activityService->logWorkRequestApproved($workRequest);
 
@@ -740,6 +747,12 @@ class WorkRequestController extends Controller
             DB::commit();
 
             NotificationDispatcher::workRequest($workRequest, 'rejected');
+
+            if ($workRequest->requester && $workRequest->asset) {
+                $workRequest->requester->notify(
+                    new AssetWorkRequestNotification($workRequest, $workRequest->asset, 'rejected')
+                );
+            }
 
             $workRequest->load([
                 'asset.category',

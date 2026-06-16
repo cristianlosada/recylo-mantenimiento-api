@@ -2,9 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Models\NotificationLog;
 use App\Models\WorkOrder;
 use App\Models\Asset;
 use App\Notifications\Channels\FcmChannel;
+use App\Notifications\Channels\NotificationLogChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -41,7 +43,7 @@ class AssetWorkOrderNotification extends Notification implements ShouldQueue
      */
     public function via($notifiable): array
     {
-        return ['mail', 'broadcast', FcmChannel::class];
+        return ['mail', 'broadcast', FcmChannel::class, NotificationLogChannel::class];
     }
 
     /**
@@ -194,6 +196,40 @@ class AssetWorkOrderNotification extends Notification implements ShouldQueue
             'asset_id'        => $this->asset->id,
             'asset_name'      => $this->asset->name,
             'event_type'      => $this->eventType,
+        ];
+    }
+
+    public function toNotificationLog($notifiable): array
+    {
+        $section = match($this->eventType) {
+            'assigned'   => '#sec-team',
+            'completed'  => '#sec-history',
+            'validated'  => '#sec-history',
+            'cancelled'  => '#sec-history',
+            'reopened'   => '#sec-info',
+            default      => '',
+        };
+
+        return [
+            'notification_type' => NotificationLog::TYPE_WORK_ORDER,
+            'event_type'        => $this->eventType,
+            'work_order_id'     => $this->workOrder->id,
+            'asset_id'          => $this->asset->id,
+            'subject'           => $this->getSubject(),
+            'message'           => $this->getContent(),
+            'metadata'          => [
+                'module'    => 'work_orders',
+                'entity_id' => $this->workOrder->id,
+                'route'     => "/work-orders/{$this->workOrder->id}{$section}",
+                'code'      => $this->workOrder->code,
+                'priority'  => $this->workOrder->priority,
+                'status'    => $this->workOrder->status,
+                'asset'     => [
+                    'id'   => $this->asset->id,
+                    'name' => $this->asset->name,
+                    'code' => $this->asset->code,
+                ],
+            ],
         ];
     }
 }

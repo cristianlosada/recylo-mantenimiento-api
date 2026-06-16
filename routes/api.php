@@ -802,6 +802,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // ========================================
     Route::post('/fcm-tokens', [\App\Http\Controllers\Api\DeviceTokenController::class, 'store']);
     Route::delete('/fcm-tokens', [\App\Http\Controllers\Api\DeviceTokenController::class, 'destroy']);
+
+    // ========================================
+    // NOTIFICACIONES IN-APP
+    // ========================================
+    Route::prefix('notifications')->group(function () {
+        Route::get('/',             [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+        Route::patch('/read-all',   [\App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
+        Route::patch('/{id}/read',  [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+    });
 });
 
 // Ruta de salud del API

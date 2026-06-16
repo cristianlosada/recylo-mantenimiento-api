@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Models\NotificationLog;
 use App\Models\WorkRequest;
+use App\Notifications\AssetWorkRequestNotification;
 use App\Services\NotificationDispatcher;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -35,6 +37,35 @@ class CheckSlaBreaches extends Command
 
         foreach ($approaching as $wr) {
             NotificationDispatcher::sla($wr, 'sla_warning');
+
+            $wr->loadMissing(['requester', 'asset']);
+
+            // Notificar al solicitante si la solicitud es interna
+            if ($wr->requester && $wr->asset) {
+                $wr->requester->notify(
+                    new AssetWorkRequestNotification($wr, $wr->asset, 'sla_warning')
+                );
+            }
+
+            // Log para dashboard de supervisores (sin usuario específico)
+            NotificationLog::create([
+                'notification_type' => NotificationLog::TYPE_WORK_REQUEST,
+                'event_type'        => 'sla_warning',
+                'work_request_id'   => $wr->id,
+                'channel'           => NotificationLog::CHANNEL_IN_APP,
+                'status'            => NotificationLog::STATUS_SENT,
+                'sent_at'           => now(),
+                'subject'           => "SLA por vencer: {$wr->code}",
+                'message'           => "La solicitud {$wr->code} vence en menos de 30 minutos.",
+                'metadata'          => [
+                    'module'    => 'work_requests',
+                    'entity_id' => $wr->id,
+                    'route'     => "/work-requests/{$wr->id}",
+                    'code'      => $wr->code,
+                    'alert'     => 'sla_warning',
+                ],
+            ]);
+
             $warned++;
         }
 
@@ -49,10 +80,36 @@ class CheckSlaBreaches extends Command
             ->get();
 
         foreach ($breaches as $wr) {
-            // Marcar en DB para no repetir el evento
             $wr->update(['sla_breached' => true]);
 
             NotificationDispatcher::sla($wr, 'sla_breached');
+
+            $wr->loadMissing(['requester', 'asset']);
+
+            if ($wr->requester && $wr->asset) {
+                $wr->requester->notify(
+                    new AssetWorkRequestNotification($wr, $wr->asset, 'sla_breached')
+                );
+            }
+
+            NotificationLog::create([
+                'notification_type' => NotificationLog::TYPE_WORK_REQUEST,
+                'event_type'        => 'sla_breached',
+                'work_request_id'   => $wr->id,
+                'channel'           => NotificationLog::CHANNEL_IN_APP,
+                'status'            => NotificationLog::STATUS_SENT,
+                'sent_at'           => now(),
+                'subject'           => "SLA incumplido: {$wr->code}",
+                'message'           => "La solicitud {$wr->code} ha superado su tiempo límite de atención.",
+                'metadata'          => [
+                    'module'    => 'work_requests',
+                    'entity_id' => $wr->id,
+                    'route'     => "/work-requests/{$wr->id}",
+                    'code'      => $wr->code,
+                    'alert'     => 'sla_breached',
+                ],
+            ]);
+
             $breached++;
         }
 
